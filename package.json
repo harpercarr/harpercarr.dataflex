@@ -1,0 +1,77 @@
+{
+	"name": "vdf",
+	"main": "extension.js",
+	"displayName": "Dataflex Colorize",
+	"description": "Dataflex colorize",
+	"version": "0.3.2",
+	"publisher": "alissoncfr",
+	"engines": {
+		"vscode": "^1.12.0"
+	},
+	"categories": [
+		"Programming Languages"
+	],
+	"contributes": {
+		"languages": [
+			{
+				"id": "vdf",
+				"aliases": [
+					"VDF",
+					"vdf"
+				],
+				"extensions": [
+					".vw",
+					".rv",
+					".sl",
+					".dg",
+					".src",
+					".dd",
+					".pkg",
+					".mod",
+					".cls",
+					".CLS",
+					".bpo",
+					".rpt",
+					".mnu",
+					".cal",
+					".con",
+					".frm",
+					".bib",
+					".top",
+					".ds",
+					".inc",
+					".mac",
+					".fmac",
+					".new",
+					".bp",
+					".wo"
+				],
+				"configuration": "./language-configuration.json"
+				
+			}
+		],
+		"grammars": [
+			{
+				"language": "vdf",
+				"scopeName": "source.vdf",
+				"path": "./syntaxes/vdf.tmLanguage"
+			}
+		],
+		"configuration": {
+            "title": "vdf",
+            "properties": {
+                "vdf.externalLibraryPaths": {
+                    "type": "array",
+                    "items": { "type": "string" },
+                    "default": ["C:\\Program Files (x86)\\DataFlex 19.1\\Pkg"],
+                    "description": "Additional external paths for DataFlex library files"
+                }
+            }
+        }
+	},
+	
+	"__metadata": {
+		"installedTimestamp": 1741283300565,
+		"size": 14258
+	}
+}

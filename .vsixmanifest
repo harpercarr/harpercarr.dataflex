@@ -1,0 +1,34 @@
+<?xml version="1.0" encoding="utf-8"?>
+<PackageManifest Version="2.0.0" xmlns="http://schemas.microsoft.com/developer/vsx-schema/2011" xmlns:d="http://schemas.microsoft.com/developer/vsx-schema-design/2011">
+  <Metadata>
+    <Identity Language="en-US" Id="vdf" Version="0.3.2" Publisher="alissoncfr"/>
+    <DisplayName>Dataflex Colorize</DisplayName>
+    <Description xml:space="preserve">Dataflex colorize</Description>
+    <Tags>vdf,VDF,__ext_.vw,__ext_.rv,__ext_.sl,__ext_.dg,__ext_.src,__ext_.dd,__ext_.pkg,__ext_.mod,__ext_.cls,__ext_.CLS,__ext_.bpo,__ext_.rpt,__ext_.mnu,__ext_.cal,__ext_.con,__ext_.frm,__ext_.bib,__ext_.top,__ext_.ds,__ext_.inc,__ext_.mac,__ext_.fmac,__ext_.new</Tags>
+    <Categories>Languages</Categories>
+    <GalleryFlags>Public</GalleryFlags>
+    <Badges></Badges>
+    <Properties>
+      <Property Id="Microsoft.VisualStudio.Code.Engine" Value="^1.12.0" />
+      <Property Id="Microsoft.VisualStudio.Code.ExtensionDependencies" Value="" />
+      
+      
+      
+      
+      
+      <Property Id="Microsoft.VisualStudio.Services.GitHubFlavoredMarkdown" Value="true" />
+      <Property Id="Microsoft.VisualStudio.Services.EnableMarketplaceQnA" Value="true" />
+      
+    </Properties>
+    
+    
+  </Metadata>
+  <Installation>
+    <InstallationTarget Id="Microsoft.VisualStudio.Code"/>
+  </Installation>
+  <Dependencies/>
+  <Assets>
+    <Asset Type="Microsoft.VisualStudio.Code.Manifest" Path="extension/package.json" Addressable="true" />
+    <Asset Type="Microsoft.VisualStudio.Services.Content.Details" Path="extension/README.md" Addressable="true" /><Asset Type="Microsoft.VisualStudio.Services.Content.Changelog" Path="extension/CHANGELOG.md" Addressable="true" />
+  </Assets>
+</PackageManifest>
