@@ -16,7 +16,7 @@ function createDefinitionProvider(externalPaths) {
             console.log(`Looking for definition of "${word}" at line: "${line}"`);
 
             // Check if this is an Object declaration line (e.g., "Object foo is a bar")
-            const objectMatch = line.match(/^\s*Object\s+(\w+)\s+is\s+a\s+(\w+)/i);
+            const objectMatch = line.match(/^\s*(?:Object|Class)\s+(\w+)\s+is\s+a\s+(\w+)/i);
             if (objectMatch) {
                 const objectName = objectMatch[1]; // "foo"
                 const superClass = objectMatch[2];  // "bar"
@@ -34,9 +34,29 @@ function createDefinitionProvider(externalPaths) {
                 }
             }
 
+            // Check if this is an Class declaration line (e.g., "Class foo is a bar")
+            // This could probably be combined with the Object check above
+            // const classMatch = line.match(/^\s*Class\s+(\w+)\s+is\s+a\s+(\w+)/i);
+            // if (classMatch) {
+            //     const className = classMatch[1]; // "foo"
+            //     const superClass = classMatch[2];  // "bar"
+
+            //     // If clicking the object name (foo), skip because this is its definition
+            //     if (word === className) {
+            //         console.log(`"${word}" is the class name in its declaration; skipping`);
+            //         return null;
+            //     }
+
+            //     // If clicking the superclass (bar), find its Class definition
+            //     if (word === superClass) {
+            //         console.log(`Resolving superclass "${word}"`);
+            //         return findSuperClassDefinition(word, externalPaths);
+            //     }
+            // }
+
             // For non-Object declaration lines (e.g., "Send foo"), or other declaration types
             // Skip if this is a declaration of the clicked word
-            if (line.match(new RegExp(`^\\s*(Class|Procedure|Function)\\s+${word}\\b`, 'i'))) {
+            if (line.match(new RegExp(`^\\s*(Procedure|Function)\\s+${word}\\b`, 'i'))) {
                 console.log(`"${word}" is a declaration; skipping`);
                 return null;
             }
@@ -102,21 +122,21 @@ async function findSuperClassDefinition(word, externalPaths) {
     const fs = require('fs').promises;
 
     // Check workspace documents first
-    for (const doc of vscode.workspace.textDocuments) {
-        if (doc.languageId === 'vdf') {
-            const lines = doc.getText().split('\n');
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
-                if (line.match(new RegExp(`^\\s*Class\\s+${word}\\b`, 'i'))) {
-                    console.log(`Found superclass definition in workspace: ${doc.uri.fsPath}`);
-                    return new vscode.Location(
-                        doc.uri,
-                        new vscode.Position(i, 0)
-                    );
-                }
-            }
-        }
-    }
+    // for (const doc of vscode.workspace.textDocuments) {
+    //     if (doc.languageId === 'vdf') {
+    //         const lines = doc.getText().split('\n');
+    //         for (let i = 0; i < lines.length; i++) {
+    //             const line = lines[i].trim();
+    //             if (line.match(new RegExp(`^\\s*Class\\s+${word}\\b`, 'i'))) {
+    //                 console.log(`Found superclass definition in workspace: ${doc.uri.fsPath}`);
+    //                 return new vscode.Location(
+    //                     doc.uri,
+    //                     new vscode.Position(i, 0)
+    //                 );
+    //             }
+    //         }
+    //     }
+    // }
 
     // Check all external paths
     for (const externalPath of externalPaths) {
@@ -145,7 +165,7 @@ async function findSuperClassDefinition(word, externalPaths) {
         }
     }
 
-    console.log(`No superclass definition found for "${word}"`);
+    console.log(`No superclass definition found for "${word}".  Possibly a built-in class?`);
     return null;
 }
 
