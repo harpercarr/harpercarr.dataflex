@@ -1,6 +1,8 @@
 // dataflexSymbolProvider.js
 const vscode = require('vscode');
 
+// Flatten the text into logical lines, combining lines ending with a semicolon
+// into a single line, and skipping standalone comment lines
 function flattenText(lines) {
     const logicalLines = []; // Array of { text, startLine, endLine }
     let i = 0;
@@ -72,12 +74,10 @@ function createSymbolProvider(diagnosticCollection) {
             const diagnostics = [];
             const lines = document.getText().split('\n');
             const logicalLines = flattenText(lines);
-            const allowedParentsForUse = ['Object', 'Class', 'Procedure', 'Function'];
-
+            
             for (let { text, startLine, endLine } of logicalLines) {
                 const range = new vscode.Range(startLine, 0, endLine, lines[endLine].length);
-
-                
+    
                 // Match Use with extension
                 const useMatch = text.match(/^\s*Use\s+(\w+\.\w+)/i);
                 if (useMatch) {
@@ -105,7 +105,6 @@ function createSymbolProvider(diagnosticCollection) {
                     const type = propertyMatch[1];
                     const name = propertyMatch[2];
                     const value = propertyMatch[3];
-                    //const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
                         type,
@@ -126,7 +125,6 @@ function createSymbolProvider(diagnosticCollection) {
                 const classMatch = text.match(/^\s*Class\s+(\w+)\s+is\s+a\s+(\w+)/i);
                 if (classMatch) {
                     const name = classMatch[1];
-                    //const range = new vscode.Range(i, 0, i, line.length);
                     const superClass= classMatch[2];
                     const symbol = new vscode.DocumentSymbol(
                         name,
@@ -180,11 +178,11 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Procedure
-                const procedureMatch = text.match(/^\s*Procedure\s+(\w+)/i);
+                const procedureMatch = text.match(/^\s*Procedure\s+(\w+)(?:\s+\w+(?:\[\])?(?:\s+ByRef)?\s+\w+)*$/i);
                 if (procedureMatch) {
                     const name = procedureMatch[1];
                     
-                    const paramMatch = text.match(/^\s*Procedure\s+\w+\s+((?:\w+\s+\w+\s*)*?)$/i);
+                    const paramMatch = text.match(/^\s*Procedure\s+\w+\s+((?:\w+(?:\[\])?(?:\s+ByRef)?\s+\w+\s*)*?)$/i);
                                                  
                     const symbol = new vscode.DocumentSymbol(
                         name,
@@ -197,17 +195,18 @@ function createSymbolProvider(diagnosticCollection) {
                     let procParams = [];
                     if (paramMatch && paramMatch[1]) {
                         const paramString = paramMatch[1].trim();
-                        // Split into type-name pairs and convert to array of objects
-                        const paramPairs = paramString.match(/(\w+\s+\w+)/g) || [];
-                        procParams = paramPairs.map(pair => {
-                            const [type, name] = pair.trim().split(/\s+/);
-                            return { type, name };
-                        });
+                        // Match each parameter with explicit groups for type, ByRef, and name
+                        const paramPairs = paramString.matchAll(/(\w+(?:\[\])?)(?:\s+(ByRef))?\s+(\w+)/gi);
+                        procParams = Array.from(paramPairs, match => ({
+                            type: match[1],           // Group 1: type (e.g., "integer")
+                            byRef: !!match[2],        // Group 2: "ByRef" if present, else undefined
+                            name: match[3]            // Group 3: name (e.g., "iParam")
+                        }));
 
                         const paramSymbols = procParams.map(param => {
                             return new vscode.DocumentSymbol(
                                 param.name,
-                                param.type,
+                                param.byRef ? param.type + ' <byref>' : param.type,
                                 vscode.SymbolKind.Variable,
                                 range,
                                 range
@@ -233,13 +232,24 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Function
-                const functionMatch = text.match(/^\s*Function\s+(\w+)(\s+\w+\s+\w+)*\s+returns\s+(\w+)$/i);
+                const functionMatch = text.match(/^\s*Function\s+(\w+)(?:\s+\w+(?:\[\])?(?:\s+ByRef)?\s+\w+)*\s+returns\s+(\w+)/i);
                 if (functionMatch) {
                     const name = functionMatch[1];
-                    const returnType = functionMatch[3];
-                    // Extract all parameters as a single string (optional improvement)
-                    const paramMatch = text.match(/^\s*Function\s+\w+\s+((?:\w+\s+\w+\s*)*?)(?:returns\s+\w+)/i);
-                    
+                    const returnType = functionMatch[2];
+
+                    // Extract all parameters as a single string
+                    const paramMatch = text.match(/^\s*Function\s+\w+\s+((?:\w+(?:\[\])?(?:\s+ByRef)?\s+\w+\s*)*?)(?:returns\s+\w+)/i);
+                    let funcParams = [];
+                    if (paramMatch && paramMatch[1]) {
+                        const paramString = paramMatch[1].trim();
+                        const paramPairs = paramString.matchAll(/(\w+(?:\[\])?)(?:\s+(ByRef))?\s+(\w+)/gi);
+                        funcParams = Array.from(paramPairs, match => ({
+                            type: match[1],           // Group 1: type (e.g., "integer")
+                            byRef: !!match[2],        // Group 2: "ByRef" if present, else undefined
+                            name: match[3]            // Group 3: name (e.g., "iParam")
+                        }));
+                    }
+
                     const symbol = new vscode.DocumentSymbol(
                         name,
                         returnType,
@@ -247,29 +257,23 @@ function createSymbolProvider(diagnosticCollection) {
                         range,
                         range
                     );
-                    
-                    let funcParams = [];
-                    if (paramMatch && paramMatch[1]) {
-                        const paramString = paramMatch[1].trim();
-                        // Split into type-name pairs and convert to array of objects
-                        const paramPairs = paramString.match(/(\w+\s+\w+)/g) || [];
-                        funcParams = paramPairs.map(pair => {
-                            const [type, name] = pair.trim().split(/\s+/);
-                            return { type, name };
-                        });
 
+                    // Add parameter symbols as children
+                    if (funcParams.length > 0) {
                         const paramSymbols = funcParams.map(param => {
+
                             return new vscode.DocumentSymbol(
                                 param.name,
-                                param.type,
+                                param.byRef ?  param.type + ' <byref>' : param.type,
                                 vscode.SymbolKind.Variable,
-                                range,
+                                range, // TODO: Ideally, use a more precise range for each param
                                 range
                             );
                         });
                         symbol.children.push(...paramSymbols);
                     }
 
+                    // Rest of the logic (parent checks, container stack, diagnostics)
                     const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
                     if (parent && (parent.type === 'Function' || parent.type === 'Procedure')) {
                         diagnostics.push(new vscode.Diagnostic(
@@ -286,6 +290,8 @@ function createSymbolProvider(diagnosticCollection) {
                     }
                     continue;
                 }
+
+                    
 
                 // End of Class, Object, Procedure, or Function
                 if (text.match(/^\s*End_(Class|Object|Procedure|Function)/i)) {

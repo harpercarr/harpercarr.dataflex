@@ -121,23 +121,6 @@ async function findDefinition(document, word, externalPaths) {
 async function findSuperClassDefinition(word, externalPaths) {
     const fs = require('fs').promises;
 
-    // Check workspace documents first
-    // for (const doc of vscode.workspace.textDocuments) {
-    //     if (doc.languageId === 'vdf') {
-    //         const lines = doc.getText().split('\n');
-    //         for (let i = 0; i < lines.length; i++) {
-    //             const line = lines[i].trim();
-    //             if (line.match(new RegExp(`^\\s*Class\\s+${word}\\b`, 'i'))) {
-    //                 console.log(`Found superclass definition in workspace: ${doc.uri.fsPath}`);
-    //                 return new vscode.Location(
-    //                     doc.uri,
-    //                     new vscode.Position(i, 0)
-    //                 );
-    //             }
-    //         }
-    //     }
-    // }
-
     // Check all external paths
     for (const externalPath of externalPaths) {
         try {
