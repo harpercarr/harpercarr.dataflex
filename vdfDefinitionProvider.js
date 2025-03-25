@@ -143,7 +143,7 @@ async function findSuperClassDefinition(word, externalPaths) {
         try {
             const files = await fs.readdir(externalPath);
             for (const file of files) {
-                if (file.endsWith('.dd') || file.endsWith('.pkg') || file.endsWith('.vw')) {
+                if (file.endsWith('.dd') || file.endsWith('.pkg') || file.endsWith('.vw') || file.endsWith('.bp')) {
                     const filePath = path.join(externalPath, file);
                     const content = await fs.readFile(filePath, 'utf8');
                     const lines = content.split('\n');

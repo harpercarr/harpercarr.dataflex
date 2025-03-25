@@ -1,6 +1,69 @@
 // dataflexSymbolProvider.js
 const vscode = require('vscode');
 
+function flattenText(lines) {
+    const logicalLines = []; // Array of { text, startLine, endLine }
+    let i = 0;
+
+    while (i < lines.length) {
+        let line = lines[i].trim();
+
+        // Skip standalone comment lines
+        if (line.startsWith('//') || line.match(/^\s*\*/)) {
+            i++;
+            continue;
+        }
+
+        let currentText = '';
+        let startLine = i;
+        let endLine = i;
+
+        // Process the current declaration
+        do {
+            // Split line into code and comment parts
+            let codePart = line;
+            const commentIndex = line.indexOf('//');
+            if (commentIndex !== -1) {
+                codePart = line.substring(0, commentIndex).trim();
+            }
+
+            // Check for semicolon at the end of the code part
+            let hasContinuation = codePart.endsWith(';');
+            if (hasContinuation) {
+                codePart = codePart.slice(0, -1).trim(); // Remove semicolon
+            }
+
+            // Add code part to current declaration
+            if (codePart) {
+                currentText += (currentText ? ' ' : '') + codePart;
+            }
+
+            if (hasContinuation) {
+                i++;
+                // Skip any comment lines between continuations
+                while (i < lines.length && (lines[i].trim().startsWith('//') || lines[i].trim().match(/^\s*\*/))) {
+                    i++;
+                }
+                if (i < lines.length) {
+                    line = lines[i].trim();
+                    endLine = i;
+                } else {
+                    break; // Reached end of file with an incomplete continuation
+                }
+            } else {
+                break; // No continuation, end of this declaration
+            }
+        } while (true);
+
+        if (currentText) {
+            logicalLines.push({ text: currentText, startLine, endLine });
+        }
+        i++;
+    }
+
+    return logicalLines;
+}
+
 function createSymbolProvider(diagnosticCollection) {
     return {
         provideDocumentSymbols(document, token) {
@@ -8,17 +71,18 @@ function createSymbolProvider(diagnosticCollection) {
             const containerStack = [];
             const diagnostics = [];
             const lines = document.getText().split('\n');
+            const logicalLines = flattenText(lines);
+            const allowedParentsForUse = ['Object', 'Class', 'Procedure', 'Function'];
 
-            for (let i = 0; i < lines.length; i++) {
-                const line = lines[i].trim();
+            for (let { text, startLine, endLine } of logicalLines) {
+                const range = new vscode.Range(startLine, 0, endLine, lines[endLine].length);
 
-                if (line.startsWith('//') || line.match(/^\s*\*/)) continue;
-
+                
                 // Match Use with extension
-                const useMatch = line.match(/^\s*Use\s+(\w+\.\w+)/i);
+                const useMatch = text.match(/^\s*Use\s+(\w+\.\w+)/i);
                 if (useMatch) {
                     const name = useMatch[1];
-                    const range = new vscode.Range(i, 0, i, line.length);
+                    //const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
                         '',
@@ -36,12 +100,12 @@ function createSymbolProvider(diagnosticCollection) {
                 }
                 
                 // Match Property
-                const propertyMatch = line.match(/^\s*Property\s+(\w+)\s+(\w+)\s+(.+)$/i);
+                const propertyMatch = text.match(/^\s*Property\s+(\w+)\s+(\w+)\s+(.+)$/i);
                 if (propertyMatch) {
                     const type = propertyMatch[1];
                     const name = propertyMatch[2];
                     const value = propertyMatch[3];
-                    const range = new vscode.Range(i, 0, i, line.length);
+                    //const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
                         type,
@@ -59,13 +123,14 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Class
-                const classMatch = line.match(/^\s*Class\s+(\w+)\s+is\s+a\s+\w+/i);
+                const classMatch = text.match(/^\s*Class\s+(\w+)\s+is\s+a\s+(\w+)/i);
                 if (classMatch) {
                     const name = classMatch[1];
-                    const range = new vscode.Range(i, 0, i, line.length);
+                    //const range = new vscode.Range(i, 0, i, line.length);
+                    const superClass= classMatch[2];
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        '',
+                        superClass,
                         vscode.SymbolKind.Class,
                         range,
                         range
@@ -86,13 +151,13 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Object
-                const objectMatch = line.match(/^\s*Object\s+(\w+)\s+is\s+a\s+\w+/i);
+                const objectMatch = text.match(/^\s*Object\s+(\w+)\s+is\s+a\s+(\w+)/i);
                 if (objectMatch) {
                     const name = objectMatch[1];
-                    const range = new vscode.Range(i, 0, i, line.length);
+                    const superClass= objectMatch[2];
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        '',
+                        superClass,
                         vscode.SymbolKind.Object,
                         range,
                         range
@@ -115,10 +180,12 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Procedure
-                const procedureMatch = line.match(/^\s*Procedure\s+(\w+)/i);
+                const procedureMatch = text.match(/^\s*Procedure\s+(\w+)/i);
                 if (procedureMatch) {
                     const name = procedureMatch[1];
-                    const range = new vscode.Range(i, 0, i, line.length);
+                    
+                    const paramMatch = text.match(/^\s*Procedure\s+\w+\s+((?:\w+\s+\w+\s*)*?)$/i);
+                                                 
                     const symbol = new vscode.DocumentSymbol(
                         name,
                         '',
@@ -126,6 +193,28 @@ function createSymbolProvider(diagnosticCollection) {
                         range,
                         range
                     );
+
+                    let procParams = [];
+                    if (paramMatch && paramMatch[1]) {
+                        const paramString = paramMatch[1].trim();
+                        // Split into type-name pairs and convert to array of objects
+                        const paramPairs = paramString.match(/(\w+\s+\w+)/g) || [];
+                        procParams = paramPairs.map(pair => {
+                            const [type, name] = pair.trim().split(/\s+/);
+                            return { type, name };
+                        });
+
+                        const paramSymbols = procParams.map(param => {
+                            return new vscode.DocumentSymbol(
+                                param.name,
+                                param.type,
+                                vscode.SymbolKind.Variable,
+                                range,
+                                range
+                            );
+                        });
+                        symbol.children.push(...paramSymbols);
+                    }
                     const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
                     if (parent && (parent.type === 'Function' || parent.type === 'Procedure')) {
                         diagnostics.push(new vscode.Diagnostic(
@@ -144,12 +233,13 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Function
-                //const functionMatch = line.match(/^\s*Function\s+(\w+)(\s+\w+\s+\w+)*\s+Returns\s+\w+$/i);
-                const functionMatch = line.match(/^\s*Function\s+(\w+)(\s+\w+\s+\w+)*\s+returns\s+(\w+)$/i);
+                const functionMatch = text.match(/^\s*Function\s+(\w+)(\s+\w+\s+\w+)*\s+returns\s+(\w+)$/i);
                 if (functionMatch) {
                     const name = functionMatch[1];
-                    const range = new vscode.Range(i, 0, i, line.length);
                     const returnType = functionMatch[3];
+                    // Extract all parameters as a single string (optional improvement)
+                    const paramMatch = text.match(/^\s*Function\s+\w+\s+((?:\w+\s+\w+\s*)*?)(?:returns\s+\w+)/i);
+                    
                     const symbol = new vscode.DocumentSymbol(
                         name,
                         returnType,
@@ -157,6 +247,29 @@ function createSymbolProvider(diagnosticCollection) {
                         range,
                         range
                     );
+                    
+                    let funcParams = [];
+                    if (paramMatch && paramMatch[1]) {
+                        const paramString = paramMatch[1].trim();
+                        // Split into type-name pairs and convert to array of objects
+                        const paramPairs = paramString.match(/(\w+\s+\w+)/g) || [];
+                        funcParams = paramPairs.map(pair => {
+                            const [type, name] = pair.trim().split(/\s+/);
+                            return { type, name };
+                        });
+
+                        const paramSymbols = funcParams.map(param => {
+                            return new vscode.DocumentSymbol(
+                                param.name,
+                                param.type,
+                                vscode.SymbolKind.Variable,
+                                range,
+                                range
+                            );
+                        });
+                        symbol.children.push(...paramSymbols);
+                    }
+
                     const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
                     if (parent && (parent.type === 'Function' || parent.type === 'Procedure')) {
                         diagnostics.push(new vscode.Diagnostic(
@@ -175,12 +288,12 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // End of Class, Object, Procedure, or Function
-                if (line.match(/^\s*End_(Class|Object|Procedure|Function)/i)) {
+                if (text.match(/^\s*End_(Class|Object|Procedure|Function)/i)) {
                     if (containerStack.length > 0) {
                         const closingSymbol = containerStack.pop().symbol;
                         closingSymbol.range = new vscode.Range(
-                            closingSymbol.range.start,
-                            new vscode.Position(i, line.length)
+                            closingSymbol.range.start, // Original start from when symbol was created
+                            new vscode.Position(endLine, lines[endLine].length) // End at this line
                         );
                     }
                     continue;
