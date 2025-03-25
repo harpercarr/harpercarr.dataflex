@@ -50,6 +50,9 @@
 				
 			}
 		],
+		"dependencies": {
+			"winreg": "^1.2.4"
+		},
 		"grammars": [
 			{
 				"language": "vdf",
@@ -63,7 +66,7 @@
                 "vdf.externalLibraryPaths": {
                     "type": "array",
                     "items": { "type": "string" },
-                    "default": ["C:\\Program Files (x86)\\DataFlex 19.1\\Pkg"],
+                    "default": [""],
                     "description": "Additional external paths for DataFlex library files"
                 }
             }

@@ -4,9 +4,43 @@ const createSymbolProvider = require('./vdfSymbolProvider');
 const createDefinitionProvider = require('./vdfDefinitionProvider');
 const fs = require('fs').promises;
 const path = require('path');
+const WinReg = require('winreg');
 
 async function activate(context) {
-    
+    // Check if this is the first run
+    const hasRunBefore = context.globalState.get('hasRunBefore', false);
+    context.globalState.update('dataflexInstallPath', null); // Clear the path on each activation
+
+    let dataflexInstallPath = context.globalState.get('dataflexInstallPath');
+
+    // Only try registry on Windows
+    if (process.platform === 'win32' && !dataflexInstallPath) { // && !hasRunBefore) {
+        getDataFlexInstallPathFromRegistry()
+            .then((path) => {
+                if (path) {
+                    // Save the path from registry
+                    dataflexInstallPath = path;
+                    context.globalState.update('dataflexInstallPath', dataflexInstallPath);
+                    context.globalState.update('hasRunBefore', true);
+                    vscode.window.showInformationMessage(`Found DataFlex install path in registry: ${dataflexInstallPath}`);
+                } else {
+                    // Fall back to folder picker if registry lookup fails
+                    promptForInstallPath(context);
+                }
+            })
+            .catch((err) => {
+                console.error('Registry read error:', err);
+                promptForInstallPath(context); // Fallback on error
+            });
+    } else if (!hasRunBefore) {
+        // Non-Windows or path already set but first run
+        promptForInstallPath(context);
+    }
+
+    // Register command to update install path
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataflex.setInstallPath', () => promptForInstallPath(context))
+    );
     // Create a diagnostic collection for DataFlex
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('vdf');
     context.subscriptions.push(diagnosticCollection);
@@ -33,8 +67,9 @@ async function activate(context) {
     console.log('SWS file contents:', swsConfig);
     
     // Get external paths
-    const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
-    
+    let externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
+    if (dataflexInstallPath) externalPaths.push(dataflexInstallPath);
+
     // Definition provider
     const definitionProvider = vscode.languages.registerDefinitionProvider(
         'vdf',
@@ -57,6 +92,27 @@ async function activate(context) {
     );
 }
 
+// Function to read DataFlex install path from registry
+function getDataFlexInstallPathFromRegistry() {
+    return new Promise((resolve, reject) => {
+        const regKey = new WinReg({
+            hive: WinReg.HKLM, // HKEY_LOCAL_MACHINE
+            key: '\\SOFTWARE\\WOW6432Node\\Data Access Worldwide\\DataFlex\\19.1\\Defaults' // Specific path for 19.1
+        });
+
+        regKey.get('VDFRootDir', (err, item) => {
+            if (err) {
+                reject(err);
+                return;
+            }
+            if (item && item.type === 'REG_SZ') {
+                resolve(item.value + "pkg"); // Return the value of VDFRootDir
+            } else {
+                resolve(null); // Value not found or not a string
+            }
+        });
+    });
+}
 
 // Find and read the single .sws file in the workspace root
 async function readSwsFile(workspaceRoot, swsFile) {
@@ -91,7 +147,6 @@ async function readSwsFile(workspaceRoot, swsFile) {
             }
         }
 
-        console.log(`Loaded .sws file: ${swsPath}`);
         return config;
     } catch (err) {
         console.log(`Error reading .sws file: ${err.message}`);
@@ -126,7 +181,6 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                         return pathArray.map(p => path.resolve(workspaceRoot, p)).filter(p => p);
                     });
 
-                console.log('Paths from main config.ws:', pathLines);
                 externalPaths.push(...pathLines);
             } catch (err) {
                 console.log(`No config.ws found or error reading it: ${err.message}`);
@@ -157,7 +211,6 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                             return pathArray.map(p => path.resolve(path.dirname(configWsPath), p)).filter(p => p);
                         });
 
-                    console.log(`Paths from library config.ws (${configWsPath}):`, pathLines);
                     externalPaths.push(...pathLines);
                 } catch (err) {
                     console.log(`No config.ws found for library at ${configWsPath}: ${err.message}`);
@@ -172,10 +225,10 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
 
     // Finally add the paths from the package.json configuration... will probably be to the DataFlex installation
     const configPaths = vscode.workspace.getConfiguration('vdf').get('externalLibraryPaths', []);
-    console.log('Paths from package.json (vdf.externalLibraryPaths):', configPaths);
-    externalPaths.push(...configPaths);
+    if (Array.isArray(configPaths) && configPaths.length > 0 && configPaths[0] !== '') {
+        externalPaths.push(...configPaths);
+    }
 
-    console.log('Combined externalPaths before deduplication:', externalPaths);
     return [...new Set(externalPaths)];
 }
 
