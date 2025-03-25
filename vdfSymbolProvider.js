@@ -21,12 +21,40 @@ function createSymbolProvider(diagnosticCollection) {
                     const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        'Use',
+                        '',
                         vscode.SymbolKind.File,
                         range,
                         range
                     );
-                    symbols.push(symbol);
+                    const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
+                    if (parent ) {
+                        parent.symbol.children.push(symbol);
+                    } else {
+                        symbols.push(symbol);
+                    }
+                    continue;
+                }
+                
+                // Match Property
+                const propertyMatch = line.match(/^\s*Property\s+(\w+)\s+(\w+)\s+(.+)$/i);
+                if (propertyMatch) {
+                    const type = propertyMatch[1];
+                    const name = propertyMatch[2];
+                    const value = propertyMatch[3];
+                    const range = new vscode.Range(i, 0, i, line.length);
+                    const symbol = new vscode.DocumentSymbol(
+                        name,
+                        type,
+                        vscode.SymbolKind.Property,
+                        range,
+                        range
+                    );
+                    const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
+                    if (parent ) {
+                        parent.symbol.children.push(symbol);
+                    } else {
+                        symbols.push(symbol);
+                    }
                     continue;
                 }
 
@@ -37,12 +65,13 @@ function createSymbolProvider(diagnosticCollection) {
                     const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        'Class',
+                        '',
                         vscode.SymbolKind.Class,
                         range,
                         range
                     );
-                    if (containerStack.length > 0) {
+                    const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
+                    if (parent && parent.type === 'Class') {
                         const parentType = containerStack[containerStack.length - 1].type;
                         diagnostics.push(new vscode.Diagnostic(
                             range,
@@ -63,7 +92,7 @@ function createSymbolProvider(diagnosticCollection) {
                     const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        'Object',
+                        '',
                         vscode.SymbolKind.Object,
                         range,
                         range
@@ -92,7 +121,7 @@ function createSymbolProvider(diagnosticCollection) {
                     const range = new vscode.Range(i, 0, i, line.length);
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        'Procedure',
+                        '',
                         vscode.SymbolKind.Method,
                         range,
                         range
@@ -115,13 +144,15 @@ function createSymbolProvider(diagnosticCollection) {
                 }
 
                 // Match Function
-                const functionMatch = line.match(/^\s*Function\s+(\w+)/i);
+                //const functionMatch = line.match(/^\s*Function\s+(\w+)(\s+\w+\s+\w+)*\s+Returns\s+\w+$/i);
+                const functionMatch = line.match(/^\s*Function\s+(\w+)(\s+\w+\s+\w+)*\s+returns\s+(\w+)$/i);
                 if (functionMatch) {
                     const name = functionMatch[1];
                     const range = new vscode.Range(i, 0, i, line.length);
+                    const returnType = functionMatch[3];
                     const symbol = new vscode.DocumentSymbol(
                         name,
-                        'Function',
+                        returnType,
                         vscode.SymbolKind.Function,
                         range,
                         range
