@@ -27,6 +27,8 @@
 		<string>mac</string>
 		<string>fmac</string>
 		<string>new</string>
+		<string>bp</string>
+		<string>wo</string>
 	</array>
 	<key>name</key>
 	<string>VDF</string>
@@ -270,7 +272,7 @@
 		</dict>
 		<dict>
 			<key>match</key>
-			<string>(?i)\b(Use|Send|Sysdate|Get|Set|Index|Clear|Find|Move|Showln|Found|On_Key|Increment|Entry_Item|Add|Register_Object|Register_Function|Register_Procedure|Import_Class_Protocol)\b</string>
+			<string>(?i)\b(Use|Send|Sysdate|Get|Set|Index|Clear|Find|Move|Showln|Found|On_Key|Increment|Entry_Item|Add|Register_Object|Register_Function|Register_Procedure|Import_Class_Protocol|WebSet|WebGet|WebSetResponsive)\b</string>
 			<key>name</key>
 			<string>support.function</string>
 		</dict>
@@ -325,6 +327,12 @@
 		<dict>
 			<key>match</key>
 			<string>(?i)\b.*\.pkg\b</string>
+			<key>name</key>
+			<string>constant.language</string>
+		</dict>
+		<dict>
+			<key>match</key>
+			<string>(?i)\b.*\.bp\b</string>
 			<key>name</key>
 			<string>constant.language</string>
 		</dict>
