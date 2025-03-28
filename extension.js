@@ -7,40 +7,28 @@ const path = require('path');
 const WinReg = require('winreg');
 
 async function activate(context) {
+    // Status Bar for current project
+    const currentProjectStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 100);
+    currentProjectStatusBar.tooltip = 'Click to select a DataFlex project';
+    currentProjectStatusBar.command = 'dataflex.setCurrentProject';
+    context.subscriptions.push(currentProjectStatusBar);
+
     // Check if this is the first run
     const hasRunBefore = context.globalState.get('hasRunBefore', false);
     context.globalState.update('dataflexInstallPath', null); // Clear the path on each activation
 
-    let dataflexInstallPath = context.globalState.get('dataflexInstallPath');
-
-    // Only try registry on Windows
-    if (process.platform === 'win32' && !dataflexInstallPath) { // && !hasRunBefore) {
-        getDataFlexInstallPathFromRegistry()
-            .then((path) => {
-                if (path) {
-                    // Save the path from registry
-                    dataflexInstallPath = path;
-                    context.globalState.update('dataflexInstallPath', dataflexInstallPath);
-                    context.globalState.update('hasRunBefore', true);
-                    vscode.window.showInformationMessage(`Found DataFlex install path in registry: ${dataflexInstallPath}`);
-                } else {
-                    // Fall back to folder picker if registry lookup fails
-                    promptForInstallPath(context);
-                }
-            })
-            .catch((err) => {
-                console.error('Registry read error:', err);
-                promptForInstallPath(context); // Fallback on error
-            });
-    } else if (!hasRunBefore) {
-        // Non-Windows or path already set but first run
-        promptForInstallPath(context);
-    }
+    let dataflexInstallPath = await getOrSetDataFlexInstallPath(context, hasRunBefore);
 
     // Register command to update install path
     context.subscriptions.push(
         vscode.commands.registerCommand('dataflex.setInstallPath', () => promptForInstallPath(context))
     );
+
+    const compilerPath = dataflexInstallPath ? path.join(dataflexInstallPath, 'Bin', 'DFComp.exe') : null;
+    if (!compilerPath || !require('fs').existsSync(compilerPath)) {
+        console.error('Compiler not found at:', compilerPath);
+        // Prompt user or fallback
+    }
     // Create a diagnostic collection for DataFlex
     const diagnosticCollection = vscode.languages.createDiagnosticCollection('vdf');
     context.subscriptions.push(diagnosticCollection);
@@ -64,11 +52,54 @@ async function activate(context) {
 
     // Read the "main" .sws file
     const swsConfig = await readSwsFile(workspaceRoot, swsFile); 
-    console.log('SWS file contents:', swsConfig);
-    
+
+    const projects = Object.entries(swsConfig.projects || {}).map(([key, srcFile]) => ({
+        name: path.basename(srcFile, '.src'), // e.g., "Accounting"
+        srcPath: path.join(workspaceRoot, 'AppSrc', srcFile) // e.g., "path/to/Accounting.src"
+    }));
+
+    // Load or set current project
+    let currentProject = context.globalState.get('currentProject');
+    if (currentProject) {
+        const project = projects.find(p => p.name === currentProject.name && p.srcPath === currentProject.srcPath);
+        if (project && (await fileExists(project.srcPath))) {
+            currentProjectStatusBar.text = `Project: ${project.name}`;
+            currentProjectStatusBar.show();
+        } else {
+            context.globalState.update('currentProject', null);
+            currentProject = null;
+        }
+    }
+
+    // Command to set current project
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataflex.setCurrentProject', async () => {
+            if (!projects.length) {
+                vscode.window.showErrorMessage('No projects found in the workspace (.sws file).');
+                return;
+            }
+
+            const quickPickItems = projects.map(project => ({
+                label: project.name, // e.g., "Program1"
+                description: project.srcPath, // e.g., "AppSrc/Program1.src"
+            }));
+            const selected = await vscode.window.showQuickPick(quickPickItems, {
+                placeHolder: 'Select the current DataFlex project',
+            });
+
+            if (selected) {
+                currentProject = { name: selected.label, srcPath: selected.description };
+                context.globalState.update('currentProject', currentProject);
+                currentProjectStatusBar.text = `Project: ${currentProject.name}`;
+                currentProjectStatusBar.show();
+                vscode.window.showInformationMessage(`Set current project to: ${currentProject.name}`);
+            }
+        })
+    );
+
     // Get external paths
     let externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
-    if (dataflexInstallPath) externalPaths.push(dataflexInstallPath);
+    if (dataflexInstallPath) externalPaths.push(path.join(dataflexInstallPath, 'Pkgs'));
 
     // Definition provider
     const definitionProvider = vscode.languages.registerDefinitionProvider(
@@ -90,6 +121,82 @@ async function activate(context) {
             }
         })
     );
+
+    context.subscriptions.push(
+        vscode.commands.registerCommand('dataflex.compile', async () => {
+            if (!currentProject) {
+                vscode.window.showErrorMessage('No current project set. Please select a Dataflex project first.');
+                return;
+            }
+            
+            //await compileFile(path.join(workspaceRoot, swsFile), filePath, context);
+            await compileFile(path.join(workspaceRoot, swsFile), currentProject.srcPath, context);
+        })
+    );
+
+    
+    
+}
+
+async function fileExists(filePath) {
+    try {
+        await fs.access(filePath, fs.constants.F_OK);
+        return true;
+    } catch {
+        return false;
+    }
+}
+async function getOrSetDataFlexInstallPath(context, hasRunBefore) {
+    let dataflexInstallPath = context.globalState.get('dataflexInstallPath');
+
+    if (process.platform === 'win32' && !dataflexInstallPath) {
+        try {
+            const pathFromRegistry = await getDataFlexInstallPathFromRegistry();
+            if (pathFromRegistry) {
+                dataflexInstallPath = pathFromRegistry;
+                context.globalState.update('dataflexInstallPath', dataflexInstallPath);
+                context.globalState.update('hasRunBefore', true);
+                vscode.window.showInformationMessage(`Found DataFlex install path in registry: ${dataflexInstallPath}`);
+            } else {
+                dataflexInstallPath = await promptForInstallPath(context);
+            }
+        } catch (err) {
+            console.error('Registry read error:', err);
+            dataflexInstallPath = await promptForInstallPath(context);
+        }
+    } else if (!hasRunBefore) {
+        dataflexInstallPath = await promptForInstallPath(context);
+    }
+
+    return dataflexInstallPath;
+}
+
+async function compileFile(swsFile, filePath, context) {
+    const { exec } = require('child_process');
+    const path = require('path');
+    const fs = require('fs').promises;
+    const compilerPath = path.join(context.globalState.get('dataflexInstallPath'), 'Bin', 'DFComp.exe');
+    const outputChannel = vscode.window.createOutputChannel('DataFlex Compiler');
+    outputChannel.show(true);
+
+    const baseName = path.basename(filePath, '.src');
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    const errFile = path.join(workspaceRoot, 'AppSrc', `${baseName}.err`);
+
+    const dfCompParams = `"${compilerPath}" -x"${swsFile}" "${filePath}"`;// Note, there can't be a space between the -x and the path to the .sws file.
+    
+    exec(dfCompParams, { cwd: workspaceRoot }, async (error, stdout, stderr) => {
+        outputChannel.appendLine(stdout || 'No output from compiler.');
+        if (error) {
+            outputChannel.appendLine(`Error: ${error.message}`);
+            if (await fileExists(errFile)) {
+                const errors = await fs.readFile(errFile, 'utf8');
+                outputChannel.appendLine('Compiler Errors:\n' + errors);
+            }
+            return;
+        }
+        outputChannel.appendLine('Compilation successful.');
+    });
 }
 
 // Function to read DataFlex install path from registry
@@ -106,7 +213,7 @@ function getDataFlexInstallPathFromRegistry() {
                 return;
             }
             if (item && item.type === 'REG_SZ') {
-                resolve(item.value + "pkg"); // Return the value of VDFRootDir
+                resolve(item.value); // Return the value of VDFRootDir
             } else {
                 resolve(null); // Value not found or not a string
             }
@@ -114,7 +221,8 @@ function getDataFlexInstallPathFromRegistry() {
     });
 }
 
-// Find and read the single .sws file in the workspace root
+// Parse the .sws file to extract configuration.  This will be called for the Main .sws file and any library .sws files.
+// The .sws file format is a simple key=value format, with sections denoted by [section_name].
 async function readSwsFile(workspaceRoot, swsFile) {
     if (!workspaceRoot) {
         console.log('No workspace root provided; cannot read .sws file');
@@ -192,7 +300,7 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
             // lib is the full path, e.g., "..\DataFlex Reports\DataFlex Reports Demo.sws"
             const libConfig = await readSwsFile(workspaceRoot, lib); // Read library .sws
             const libWsPaths = libConfig['workspacepaths'] || {};
-
+            
             // Optionally read config.ws from library .sws
             if (libWsPaths['configfile']) {
                 const configWsPath = path.resolve(path.dirname(path.join(workspaceRoot,lib)), libWsPaths['configfile']);

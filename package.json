@@ -12,12 +12,27 @@
 		"Programming Languages"
 	],
 	"contributes": {
+		"commands": [
+            {
+                "command": "dataflex.compile",
+                "title": "DataFlex: Compile File"
+            },
+            {
+                "command": "dataflex.setInstallPath",
+                "title": "DataFlex: Set Install Path"
+            },
+			{
+                "command": "dataflex.setCurrentProject",
+                "title": "DataFlex: Set Current Project"
+            }
+        ],
 		"languages": [
 			{
 				"id": "vdf",
 				"aliases": [
 					"VDF",
-					"vdf"
+					"vdf",
+					"DataFlex"
 				],
 				"extensions": [
 					".vw",
@@ -71,10 +86,17 @@
                 }
             }
         }
+
 	},
-	
 	"__metadata": {
 		"installedTimestamp": 1741283300565,
 		"size": 14258
-	}
+	},
+	"keybindings": [
+    {
+        "command": "dataflex.compile",
+        "key": "ctrl+shift+b",
+        "when": "editorLangId == vdf"
+    }
+]
 }

@@ -1,0 +1,16 @@
+{
+    "version": "2.0.0",
+    "tasks": [
+        {
+            "label": "Compile DataFlex",
+            "type": "shell",
+            "command": "${config:dataflexInstallPath}/Bin/DFComp.exe",
+            "args": ["-x", "${file}"],
+            "group": {
+                "kind": "build",
+                "isDefault": true
+            },
+            "problemMatcher": []
+        }
+    ]
+}

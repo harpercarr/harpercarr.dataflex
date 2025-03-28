@@ -77,7 +77,77 @@ function createSymbolProvider(diagnosticCollection) {
             
             for (let { text, startLine, endLine } of logicalLines) {
                 const range = new vscode.Range(startLine, 0, endLine, lines[endLine].length);
-    
+                /*
+                // Match Struct
+                const structMatch = text.match(/^\s*Struct\s+(\w+)/i);
+                if (structMatch) {
+                    const name = structMatch[1];
+                    const structRange = range; // Range of just the Struct line
+                    let endLine = startLine;
+                    const structChildren = [];
+                    let insideStruct = false; // Track when we're inside the struct definition
+
+                    // Find current line’s index
+                    const currentIndex = logicalLines.findIndex(line => line.text === text && line.startLine === startLine);
+                    if (currentIndex === -1) continue; // Shouldn’t happen, but safety check
+
+                    // Look ahead for members and End_Struct
+                    for (let i = currentIndex; i < logicalLines.length; i++) {
+                        const nextLine = logicalLines[i];
+                        const nextText = nextLine.text.trim();
+                        endLine = nextLine.endLine;
+
+                        if (i === currentIndex) {
+                            insideStruct = true; // Start of struct
+                            continue; // Skip the Struct line itself
+                        }
+
+                        if (nextText.match(/^\s*End_Struct/i)) {
+                            break; // End of struct
+                        }
+
+                        if (insideStruct) {
+                            // Match struct members (e.g., "Integer iValue", "String sName")
+                            const memberMatch = nextText.match(/^\s*(\w+(?:\[\])?)\s+(\w+)/i);
+                            if (memberMatch && !nextText.match(/^\s*Use\s+\w+/i)) { // Exclude Use statements
+                                const memberType = memberMatch[1];
+                                const memberName = memberMatch[2];
+                                const memberRange = new vscode.Range(nextLine.startLine, 0, nextLine.endLine, nextLine.text.length);
+
+                                const memberSymbol = new vscode.DocumentSymbol(
+                                    memberName,
+                                    memberType,
+                                    vscode.SymbolKind.Field,
+                                    memberRange,
+                                    memberRange
+                                );
+                                structChildren.push(memberSymbol);
+                            }
+                        }
+                    }
+
+                    const fullStructRange = new vscode.Range(startLine, 0, endLine, logicalLines[endLine].text.length);
+                    const symbol = new vscode.DocumentSymbol(
+                        name,
+                        'struct',
+                        vscode.SymbolKind.Struct,
+                        fullStructRange,
+                        structRange
+                    );
+                    symbol.children = structChildren;
+
+                    const parent = containerStack.length > 0 ? containerStack[containerStack.length - 1] : null;
+                    if (parent) {
+                        parent.symbol.children.push(symbol);
+                        containerStack.push({ symbol, type: 'Struct' });
+                    } else {
+                        symbols.push(symbol);
+                        containerStack.push({ symbol, type: 'Struct' });
+                    }
+                    continue;
+                }
+                    */
+                   
                 // Match Use with extension
                 const useMatch = text.match(/^\s*Use\s+(\w+\.\w+)/i);
                 if (useMatch) {
@@ -230,7 +300,8 @@ function createSymbolProvider(diagnosticCollection) {
                     }
                     continue;
                 }
-
+                
+                
                 // Match Function
                 const functionMatch = text.match(/^\s*Function\s+(\w+)(?:\s+\w+(?:\[\])?(?:\s+ByRef)?\s+\w+)*\s+returns\s+(\w+)/i);
                 if (functionMatch) {
@@ -294,7 +365,7 @@ function createSymbolProvider(diagnosticCollection) {
                     
 
                 // End of Class, Object, Procedure, or Function
-                if (text.match(/^\s*End_(Class|Object|Procedure|Function)/i)) {
+                if (text.match(/^\s*End_(Class|Object|Procedure|Function|Struct)/i)) {
                     if (containerStack.length > 0) {
                         const closingSymbol = containerStack.pop().symbol;
                         closingSymbol.range = new vscode.Range(
