@@ -56,7 +56,7 @@ async function setupEnvironment(context) {
         return { dataflexInstallPath, workspaceRoot };
     }
 
-    const swsConfig = await readSwsFile(workspaceRoot, swsFile);
+    const swsConfig = await readSwsFile(path.resolve(workspaceRoot, swsFile));
     const projects = Object.entries(swsConfig.projects || {}).map(([_, srcFile]) => ({
         name: path.basename(srcFile, '.src'),
         srcPath: path.join(workspaceRoot, 'AppSrc', srcFile)
@@ -249,14 +249,9 @@ function getDataFlexInstallPathFromRegistry() {
     });
 }
 
-async function readSwsFile(workspaceRoot, swsFile) {
-    if (!workspaceRoot) {
-        console.log('No workspace root provided; cannot read .sws file');
-        return {};
-    }
+async function readSwsFile(swsFilePath) {
     try {
-        const swsPath = path.join(workspaceRoot, swsFile);
-        const content = await fs.readFile(swsPath, 'utf8');
+        const content = await fs.readFile(swsFilePath, 'utf8');
         const lines = content.split('\n')
             .map(line => line.trim())
             .filter(line => line && !line.startsWith('#') && !line.startsWith(';'));
@@ -301,34 +296,28 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                 .filter(line => line && /path/i.test(line))
                 .flatMap(line => line.split('=')[1]?.split(';').map(p => p.trim()).filter(p => p && p !== '.') || [])
                 .map(p => path.resolve(workspaceRoot, p));
-            if (fileExists(paths)) {
-                externalPaths.push(...paths);
+            for (const p of paths) {
+                if (await fileExists(p)) {
+                    externalPaths.push(p);
+                }
             }
+                
             //externalPaths.push(...paths);
         } catch (err) {
             console.log(`No config.ws found or error reading it: ${err.message}`);
         }
     }
 
-    for (const lib of Object.values(libraries)) {
-        const libConfig = await readSwsFile(workspaceRoot, lib);
-        const libWsPaths = libConfig['workspacepaths'] || {};
-        const libPath = path.dirname(lib);
-        if (libWsPaths['configfile']) {
-            const configWsPath = path.resolve(path.join(workspaceRoot, libPath), libWsPaths['configfile']);
-            try {
-                const content = await fs.readFile(configWsPath, 'utf8');
-                const paths = content.split('\n')
-                    .map(line => line.trim())
-                    .filter(line => line && /path/i.test(line))
-                    .flatMap(line => line.split('=')[1]?.split(';').map(p => p.trim()).filter(p => p && p !== '.') || [])
-                    .map(p => path.resolve(workspaceRoot, libPath, p));
-                if (fileExists(paths)) {
-                    externalPaths.push(...paths);
-                }
-            } catch (err) {
-                console.log(`No config.ws found for library at ${configWsPath}: ${err.message}`);
-            }
+    for (let lib of Object.values(libraries)) {
+        const isRelative = lib.startsWith('.');
+        
+        if (isRelative) {
+            // Handling relative paths to libraries by resolving them relative to the workspace root.
+            lib = path.resolve(workspaceRoot, lib);
+        } 
+        
+        if (path.resolve(path.dirname(lib)) != workspaceRoot) {
+            externalPaths.push(await processLibrary(lib));
         }
     }
 
@@ -338,6 +327,40 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
     return [...new Set(externalPaths)];
 }
 
+async function processLibrary(lib){
+    const libConfig = await readSwsFile(lib);
+    if (!libConfig) {
+        return{};
+    }
+    
+    let libraryPaths = [];
+
+    const libWsPaths = libConfig['workspacepaths'] || {};
+    const libPath = path.dirname(lib);
+    if (libWsPaths['configfile']) {
+        const configWsPath = path.resolve(path.dirname(lib), libWsPaths['configfile']);
+        
+        try {
+            const content = await fs.readFile(configWsPath, 'utf8');
+            const paths = content.split('\n')
+                .map(line => line.trim())
+                .filter(line => line && /path/i.test(line))
+                .flatMap(line => line.split('=')[1]?.split(';').map(p => p.trim()).filter(p => p && p !== '.') || [])
+                .map(p => path.resolve(libPath, p));
+            for (const path of paths) {
+                if (await fileExists(path)) {
+                    libraryPaths.push(path);
+                }
+            }
+
+        } catch (err) {
+            console.log(`No configfile found for library "${lib}" at ${configWsPath}: ${err.message}`);
+            
+        }
+    }
+
+    return libraryPaths;
+}
 function deactivate() {}
 
 module.exports = { activate, deactivate };
