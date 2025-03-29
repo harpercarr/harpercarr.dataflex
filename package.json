@@ -1,10 +1,10 @@
 {
-	"name": "vdf",
+	"name": "dataflex",
 	"main": "extension.js",
-	"displayName": "Dataflex Colorize",
-	"description": "Dataflex colorize",
-	"version": "0.3.2",
-	"publisher": "alissoncfr",
+	"displayName": "Dataflex",
+	"description": "Dataflex",
+	"version": "0.1.0",
+	"publisher": "harpercarr",
 	"engines": {
 		"vscode": "^1.12.0"
 	},
@@ -28,7 +28,7 @@
         ],
 		"languages": [
 			{
-				"id": "vdf",
+				"id": "dataflex",
 				"aliases": [
 					"VDF",
 					"vdf",
@@ -70,13 +70,13 @@
 		},
 		"grammars": [
 			{
-				"language": "vdf",
-				"scopeName": "source.vdf",
-				"path": "./syntaxes/vdf.tmLanguage"
+				"language": "dataflex",
+				"scopeName": "source.dataflex",
+				"path": "./syntaxes/dataflex.tmLanguage"
 			}
 		],
 		"configuration": {
-            "title": "vdf",
+            "title": "dataflex",
             "properties": {
                 "vdf.externalLibraryPaths": {
                     "type": "array",
@@ -96,7 +96,7 @@
     {
         "command": "dataflex.compile",
         "key": "ctrl+shift+b",
-        "when": "editorLangId == vdf"
+        "when": "editorLangId == dataflex"
     }
 ]
 }

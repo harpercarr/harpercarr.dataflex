@@ -3,15 +3,15 @@ const vscode = require('vscode');
 const path = require('path');
 const fs = require('fs').promises;
 const WinReg = require('winreg');
-const createSymbolProvider = require('./vdfSymbolProvider');
-const createDefinitionProvider = require('./vdfDefinitionProvider');
+const createSymbolProvider = require('./dataflexSymbolProvider');
+const createDefinitionProvider = require('./dataflexDefinitionProvider');
 
 async function activate(context) {
     // Initialize UI
     const ui = initializeUI(context);
 
     // Setup paths and config
-    const { dataflexInstallPath, workspaceRoot, swsConfig, projects } = await setupEnvironment(context);
+    const { dataflexInstallPath, workspaceRoot, swsFile, swsConfig, projects } = await setupEnvironment(context);
     if (!workspaceRoot || !swsConfig) return; // Early exit handled in setupEnvironment
 
     const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
@@ -62,17 +62,17 @@ async function setupEnvironment(context) {
         srcPath: path.join(workspaceRoot, 'AppSrc', srcFile)
     }));
 
-    return { dataflexInstallPath, workspaceRoot, swsConfig, projects };
+    return { dataflexInstallPath, workspaceRoot, swsFile, swsConfig, projects };
 }
 
 // Language Providers
 function registerLanguageProviders(context, externalPaths) {
-    const diagnosticCollection = vscode.languages.createDiagnosticCollection('vdf');
+    const diagnosticCollection = vscode.languages.createDiagnosticCollection('dataflex');
     context.subscriptions.push(diagnosticCollection);
 
     const symbolProvider = createSymbolProvider(diagnosticCollection);
     context.subscriptions.push(
-        vscode.languages.registerDocumentSymbolProvider('vdf', symbolProvider)
+        vscode.languages.registerDocumentSymbolProvider('dataflex', symbolProvider)
     );
 
     //const swsConfig = readSwsFile(workspaceRoot, swsFile); // Already awaited in setup
@@ -80,17 +80,17 @@ function registerLanguageProviders(context, externalPaths) {
     //if (dataflexInstallPath) externalPaths.then(paths => paths.push(path.join(dataflexInstallPath, 'Pkgs')));
 
     context.subscriptions.push(
-        vscode.languages.registerDefinitionProvider('vdf', createDefinitionProvider(externalPaths))
+        vscode.languages.registerDefinitionProvider('dataflex', createDefinitionProvider(externalPaths))
     );
 
     context.subscriptions.push(
         vscode.workspace.onDidChangeTextDocument(event => {
-            if (event.document.languageId === 'vdf') {
+            if (event.document.languageId === 'dataflex') {
                 symbolProvider.provideDocumentSymbols(event.document, new vscode.CancellationTokenSource().token);
             }
         }),
         vscode.workspace.onDidOpenTextDocument(document => {
-            if (document.languageId === 'vdf') {
+            if (document.languageId === 'dataflex') {
                 symbolProvider.provideDocumentSymbols(document, new vscode.CancellationTokenSource().token);
             }
         })
@@ -301,7 +301,10 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                 .filter(line => line && /path/i.test(line))
                 .flatMap(line => line.split('=')[1]?.split(';').map(p => p.trim()).filter(p => p && p !== '.') || [])
                 .map(p => path.resolve(workspaceRoot, p));
-            externalPaths.push(...paths);
+            if (fileExists(paths)) {
+                externalPaths.push(...paths);
+            }
+            //externalPaths.push(...paths);
         } catch (err) {
             console.log(`No config.ws found or error reading it: ${err.message}`);
         }
@@ -319,15 +322,17 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                     .map(line => line.trim())
                     .filter(line => line && /path/i.test(line))
                     .flatMap(line => line.split('=')[1]?.split(';').map(p => p.trim()).filter(p => p && p !== '.') || [])
-                    .map(p => path.resolve(libPath, p));
-                externalPaths.push(...paths);
+                    .map(p => path.resolve(workspaceRoot, libPath, p));
+                if (fileExists(paths)) {
+                    externalPaths.push(...paths);
+                }
             } catch (err) {
                 console.log(`No config.ws found for library at ${configWsPath}: ${err.message}`);
             }
         }
     }
 
-    const configPaths = vscode.workspace.getConfiguration('vdf').get('externalLibraryPaths', []);
+    const configPaths = vscode.workspace.getConfiguration('dataflex').get('externalLibraryPaths', []);
     if (configPaths.length && configPaths[0] !== '') externalPaths.push(...configPaths);
 
     return [...new Set(externalPaths)];

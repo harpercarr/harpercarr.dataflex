@@ -31,7 +31,7 @@
 		<string>wo</string>
 	</array>
 	<key>name</key>
-	<string>VDF</string>
+	<string>Dataflex</string>
 	<key>patterns</key>
 	<array>
 		<dict>
@@ -338,7 +338,7 @@
 		</dict>
 	</array>
 	<key>scopeName</key>
-	<string>source.vdf</string>
+	<string>source.dataflex</string>
 	<key>uuid</key>
 	<string>ef4d85e8-a2aa-4c09-b7fc-c2683ea10d81</string>
 </dict>
