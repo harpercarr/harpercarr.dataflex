@@ -5,6 +5,7 @@ const fs = require('fs').promises;
 const WinReg = require('winreg');
 const createSymbolProvider = require('./dataflexSymbolProvider');
 const createDefinitionProvider = require('./dataflexDefinitionProvider');
+const { platform } = require('os');
 
 async function activate(context) {
     // Initialize UI
@@ -25,6 +26,8 @@ async function activate(context) {
 
     // Register commands
     registerCommands(context, ui.currentProjectStatusBar, workspaceRoot, swsFile, projects);
+
+    
 }
 
 // UI Setup
@@ -41,7 +44,6 @@ async function setupEnvironment(context) {
     const hasRunBefore = context.globalState.get('hasRunBefore', false);
     context.globalState.update('dataflexInstallPath', null);
 
-    const dataflexInstallPath = await getOrSetDataFlexInstallPath(context, hasRunBefore);
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
 
     if (!workspaceRoot) {
@@ -62,6 +64,8 @@ async function setupEnvironment(context) {
         srcPath: path.join(workspaceRoot, 'AppSrc', srcFile)
     }));
 
+    const dataflexInstallPath = await getOrSetDataFlexInstallPath(context, swsConfig.properties.version, hasRunBefore);
+    
     return { dataflexInstallPath, workspaceRoot, swsFile, swsConfig, projects };
 }
 
@@ -138,7 +142,10 @@ function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) 
                 statusBar.show();
                 vscode.window.showInformationMessage(`Set current project to: ${currentProject.name}`);
             }
-        }),
+        })
+    );
+    if (process.platform === 'win32') {
+        context.subscriptions.push(
         vscode.commands.registerCommand('dataflex.compile', async () => {
             const currentProject = context.globalState.get('currentProject');
             if (!currentProject) {
@@ -148,6 +155,10 @@ function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) 
             await compileFile(path.join(workspaceRoot, swsFile), currentProject.srcPath, context);
         })
     );
+    } else {
+        vscode.window.showErrorMessage("Unable to compile on non-windows platforms");
+    }
+
 }
 
 // Utility Functions
@@ -160,11 +171,18 @@ async function fileExists(filePath) {
     }
 }
 
-async function getOrSetDataFlexInstallPath(context, hasRunBefore) {
+async function getOrSetDataFlexInstallPath(context, dfVersion, hasRunBefore) {
     let dataflexInstallPath = context.globalState.get('dataflexInstallPath');
-    if (process.platform === 'win32' && !dataflexInstallPath) {
+
+    // If not on windows, return empty string
+    if (!process.platform === 'win32') {
+        vscode.window.showInformationMessage(`Not running on Windows.`);
+        return ""
+    }
+
+    if ( !dataflexInstallPath) {
         try {
-            dataflexInstallPath = await getDataFlexInstallPathFromRegistry();
+            dataflexInstallPath = await getDataFlexInstallPathFromRegistry(dfVersion);
             if (dataflexInstallPath) {
                 context.globalState.update('dataflexInstallPath', dataflexInstallPath);
                 context.globalState.update('hasRunBefore', true);
@@ -236,15 +254,42 @@ async function compileFile(swsPath, srcPath, context) {
     });
 }
 
-function getDataFlexInstallPathFromRegistry() {
-    return new Promise((resolve, reject) => {
-        const regKey = new WinReg({
+async function getDataFlexInstallPathFromRegistry(dfVersion) {
+    const regPaths = [
+        // 64-bit path
+        {
             hive: WinReg.HKLM,
-            key: '\\SOFTWARE\\WOW6432Node\\Data Access Worldwide\\DataFlex\\19.1\\Defaults'
-        });
+            key: `\\SOFTWARE\\Data Access Worldwide\\DataFlex\\${dfVersion}\\Defaults`
+        },
+        // 32-bit path (Wow6432Node)
+        {
+            hive: WinReg.HKLM,
+            key: `\\SOFTWARE\\Wow6432Node\\Data Access Worldwide\\DataFlex\\${dfVersion}\\Defaults`
+        }
+    ];
+
+    for (const regPath of regPaths) {
+        try {
+            const value = await checkRegistryValue(regPath);
+            if (value) {
+                console.log(`Found DataFlex ${dfVersion} install path in ${regPath.key}: ${value}`);
+                return value;
+            }
+        } catch (err) {
+            console.warn(`Failed to check ${regPath.key}: ${err.message}`);
+        }
+    }
+    console.log(`DataFlex ${dfVersion} install path not found in registry`);
+    return null;
+}
+
+// Helper function to check a registry key/value
+function checkRegistryValue(regPath) {
+    return new Promise((resolve, reject) => {
+        const regKey = new WinReg(regPath);
         regKey.get('VDFRootDir', (err, item) => {
             if (err) return reject(err);
-            resolve(item?.type === 'REG_SZ' ? item.value : null);
+            resolve(item && item.type === 'REG_SZ' ? item.value : null);
         });
     });
 }
@@ -301,8 +346,6 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                     externalPaths.push(p);
                 }
             }
-                
-            //externalPaths.push(...paths);
         } catch (err) {
             console.log(`No config.ws found or error reading it: ${err.message}`);
         }

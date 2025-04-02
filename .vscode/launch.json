@@ -2,6 +2,7 @@
 {
     "version": "0.1.0",
     "configurations": [
+        
         {
             "name": "Launch Extension",
             "type": "extensionHost",
@@ -9,5 +10,6 @@
             "runtimeExecutable": "${execPath}",
             "args": ["--extensionDevelopmentPath=${workspaceRoot}" ]
         }
+        
     ]
 }

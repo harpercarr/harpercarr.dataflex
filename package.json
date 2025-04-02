@@ -11,21 +11,28 @@
 	"categories": [
 		"Programming Languages"
 	],
+	"activationEvents": [
+		"onLanguage:vdf"
+	],
 	"contributes": {
 		"commands": [
-            {
-                "command": "dataflex.compile",
-                "title": "DataFlex: Compile File"
-            },
-            {
-                "command": "dataflex.setInstallPath",
-                "title": "DataFlex: Set Install Path"
-            },
 			{
-                "command": "dataflex.setCurrentProject",
-                "title": "DataFlex: Set Current Project"
-            }
-        ],
+				"command": "dataflex.compile",
+				"title": "DataFlex: Compile Project"
+			},
+			{
+				"command": "dataflex.openWorkspace",
+				"title": "DataFlex: Open Workspace"
+			},
+			{
+				"command": "dataflex.setInstallPath",
+				"title": "DataFlex: Set Runtime Path"
+			},
+			{
+				"command": "dataflex.setCurrentProject",
+				"title": "DataFlex: Set Current Project"
+			}
+		],
 		"languages": [
 			{
 				"id": "dataflex",
@@ -62,7 +69,6 @@
 					".wo"
 				],
 				"configuration": "./language-configuration.json"
-				
 			}
 		],
 		"dependencies": {
@@ -76,27 +82,37 @@
 			}
 		],
 		"configuration": {
-            "title": "dataflex",
-            "properties": {
-                "vdf.externalLibraryPaths": {
-                    "type": "array",
-                    "items": { "type": "string" },
-                    "default": [""],
-                    "description": "Additional external paths for DataFlex library files"
-                }
-            }
-        }
-
+			"title": "dataflex",
+			"properties": {
+				"vdf.externalLibraryPaths": {
+					"type": "array",
+					"items": {
+						"type": "string"
+					},
+					"default": [
+						""
+					],
+					"description": "Additional external paths for DataFlex library files"
+				}
+			}
+		}
 	},
 	"__metadata": {
 		"installedTimestamp": 1741283300565,
 		"size": 14258
 	},
 	"keybindings": [
-    {
-        "command": "dataflex.compile",
-        "key": "ctrl+shift+b",
-        "when": "editorLangId == dataflex"
-    }
-]
+		{
+			"command": "dataflex.compile",
+			"key": "ctrl+shift+b",
+			"when": "editorLangId == dataflex"
+		}
+	],
+	"dependencies": {
+		"winreg": "^1.2.5"
+	},
+	"devDependencies": {
+		"electron": "^35.1.2",
+		"electron-rebuild": "^3.2.9"
+	}
 }
