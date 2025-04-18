@@ -29,6 +29,7 @@
 		<string>new</string>
 		<string>bp</string>
 		<string>wo</string>
+		<string>srv</string>
 	</array>
 	<key>name</key>
 	<string>Dataflex</string>

@@ -7,12 +7,20 @@ const createSymbolProvider = require('./dataflexSymbolProvider');
 const createDefinitionProvider = require('./dataflexDefinitionProvider');
 const { platform } = require('os');
 
+let ui;
+
+
 async function activate(context) {
     // Initialize UI
     const ui = initializeUI(context);
 
     // Setup paths and config
-    const { dataflexInstallPath, workspaceRoot, swsFile, swsConfig, projects } = await setupEnvironment(context);
+    const files = await fs.readdir(vscode.workspace.workspaceFolders?.[0]?.uri.fsPath);
+    const swsFile = files.find(file => file.toLowerCase().endsWith('.sws'));
+    if (!swsFile) {
+        vscode.window.showErrorMessage('No .sws file found in workspace root.');
+    }
+    const { dataflexInstallPath, workspaceRoot, swsConfig, projects } = await setupEnvironment(context, swsFile);
     if (!workspaceRoot || !swsConfig) return; // Early exit handled in setupEnvironment
 
     const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
@@ -26,7 +34,6 @@ async function activate(context) {
 
     // Register commands
     registerCommands(context, ui.currentProjectStatusBar, workspaceRoot, swsFile, projects);
-
     
 }
 
@@ -40,7 +47,7 @@ function initializeUI(context) {
 }
 
 // Environment Setup
-async function setupEnvironment(context) {
+async function setupEnvironment(context, swsFile) {
     const hasRunBefore = context.globalState.get('hasRunBefore', false);
     context.globalState.update('dataflexInstallPath', null);
 
@@ -51,13 +58,6 @@ async function setupEnvironment(context) {
         return {};
     }
 
-    const files = await fs.readdir(workspaceRoot);
-    const swsFile = files.find(file => file.toLowerCase().endsWith('.sws'));
-    if (!swsFile) {
-        vscode.window.showErrorMessage('No .sws file found in workspace root.');
-        return { dataflexInstallPath, workspaceRoot };
-    }
-
     const swsConfig = await readSwsFile(path.resolve(workspaceRoot, swsFile));
     const projects = Object.entries(swsConfig.projects || {}).map(([_, srcFile]) => ({
         name: path.basename(srcFile, '.src'),
@@ -66,7 +66,7 @@ async function setupEnvironment(context) {
 
     const dataflexInstallPath = await getOrSetDataFlexInstallPath(context, swsConfig.properties.version, hasRunBefore);
     
-    return { dataflexInstallPath, workspaceRoot, swsFile, swsConfig, projects };
+    return { dataflexInstallPath, workspaceRoot,  swsConfig, projects };
 }
 
 // Language Providers
@@ -121,6 +121,39 @@ async function manageCurrentProject(context, statusBar, projects) {
 function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) {
     context.subscriptions.push(
         vscode.commands.registerCommand('dataflex.setInstallPath', () => promptForInstallPath(context)),
+        vscode.commands.registerCommand('dataflex.openWorkspace', async () => {
+            const swsFiles = await vscode.window.showOpenDialog({
+                canSelectFolders: false,
+                canSelectFiles: true,
+                openLabel: 'Select DataFlex Workspace File (.sws)',
+                defaultUri: vscode.workspace.workspaceFolders?.[0]?.uri || vscode.Uri.file('C:\\'),
+                filters: {
+                    'DataFlex Workspace Files': ['sws'],
+                    'All Files': ['*']
+                }
+            });
+
+            if (swsFiles && swsFiles.length > 0) {
+                const selectedSwsFileUri = swsFiles[0];
+                const swsFilePath = selectedSwsFileUri.fsPath;
+                const swsFileDirectory = path.dirname(swsFilePath);
+
+                // Check if a workspace is already open
+                if (vscode.workspace.workspaceFolders && vscode.workspace.workspaceFolders.length > 0) {
+                    const currentWorkspaceFolder = vscode.workspace.workspaceFolders[0];
+                    // If the selected .sws file is not in the current workspace, open a new one
+                    if (!swsFileDirectory.startsWith(currentWorkspaceFolder.uri.fsPath)) {
+                        vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(swsFileDirectory), { forceNewWindow: false });
+                    } else {
+                        // If the .sws file is within the current workspace, just re-initialize
+                        await reinitializeEnvironment(context, selectedSwsFileUri.fsPath);
+                    }
+                } else {
+                    // If no workspace is open, open the folder containing the .sws file
+                    vscode.commands.executeCommand('vscode.openFolder', vscode.Uri.file(swsFileDirectory), { forceNewWindow: false });
+                }
+            }
+        }),
         vscode.commands.registerCommand('dataflex.setCurrentProject', async () => {
             if (!projects.length) {
                 vscode.window.showErrorMessage('No projects found in the workspace (.sws file).');
@@ -161,6 +194,34 @@ function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) 
 
 }
 
+async function reinitializeEnvironment(context, swsFilePath) {
+    vscode.window.showInformationMessage(`Re-initializing DataFlex environment with: ${path.basename(swsFilePath)}`);
+    const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
+    if (!workspaceRoot) {
+        vscode.window.showErrorMessage('No workspace folder open.');
+        return;
+    }
+
+    const swsConfig = await readSwsFile(swsFilePath);
+    const projects = Object.entries(swsConfig.projects || {}).map(([_, srcFile]) => ({
+        name: path.basename(srcFile, '.src'),
+        srcPath: path.join(workspaceRoot, 'AppSrc', srcFile)
+    }));
+
+    // Re-evaluate the DataFlex install path based on the new .sws file's version
+    const dataflexInstallPath = await getOrSetDataFlexInstallPath(context, swsConfig.properties.version, context.globalState.get('hasRunBefore', false));
+
+    const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
+    if (dataflexInstallPath) externalPaths.push(path.join(dataflexInstallPath, 'Pkg'));
+
+    // Re-register language providers with the new paths
+    registerLanguageProviders(context, externalPaths);
+
+    // Reload and display the current project (if any)
+    await manageCurrentProject(context, ui.currentProjectStatusBar, projects);
+
+}
+
 // Utility Functions
 async function fileExists(filePath) {
     try {
@@ -176,7 +237,7 @@ async function getOrSetDataFlexInstallPath(context, dfVersion, hasRunBefore) {
 
     // If not on windows, return empty string
     if (!process.platform === 'win32') {
-        vscode.window.showInformationMessage(`Not running on Windows.`);
+        vscode.window.showInformationMessage(`Not on Windows. Unable to set DataFlex install path.`);
         return ""
     }
 
@@ -205,12 +266,32 @@ async function getOrSetDataFlexInstallPath(context, dfVersion, hasRunBefore) {
     return dataflexInstallPath;
 }
 
+async function promptForSWSFile(context) {
+    const swsFile = await vscode.window.showOpenDialog({
+        canSelectFolders: false,
+        canSelectFiles: true,
+        openLabel: 'Select DataFlex Workspace File',
+        defaultUri: vscode.Uri.file('C:\\'),
+        filters: {
+            'DataFlex Workspace Files': ['sws'],
+            'All Files': ['*']
+        }
+    });
+    if (swsFile?.length) {
+        const selectedFile = swsFile[0];
+        context.globalState.update('dataflexCurrentWorkspace', selectedFile);
+        context.globalState.update('hasRunBefore', true);
+        return selectedFile;
+    }
+    return null;
+}
+
 async function promptForInstallPath(context) {
     const folder = await vscode.window.showOpenDialog({
         canSelectFolders: true,
         canSelectFiles: false,
         openLabel: 'Select DataFlex Install Folder',
-        defaultUri: vscode.Uri.file('C:\\Program Files\\DataFlex 23.0')
+        defaultUri: vscode.Uri.file('C:\\Program Files\\')
     });
     if (folder?.length) {
         const selectedPath = folder[0].fsPath;
@@ -360,7 +441,9 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
         } 
         
         if (path.resolve(path.dirname(lib)) != workspaceRoot) {
-            externalPaths.push(await processLibrary(lib));
+            const libraryPaths = await processLibrary(lib);
+            // Append all items from libraryPaths to externalPaths
+            externalPaths.push(...libraryPaths);
         }
     }
 
