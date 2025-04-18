@@ -5,6 +5,10 @@
 	"description": "Dataflex",
 	"version": "0.1.0",
 	"publisher": "harpercarr",
+	"repository": {
+		"type": "git",
+		"url": "https://github.com/harpercarr/harpercarr.dataflex"
+	},
 	"engines": {
 		"vscode": "^1.12.0"
 	},

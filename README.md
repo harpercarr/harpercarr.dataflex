@@ -54,7 +54,7 @@ This extension contributes the following settings to VS Code (accessible via `Fi
 
 ## Contributing
 
-* GitHub coming soon...
+* https://github.com/harpercarr/harpercarr.dataflex
 
 ## Release Notes
 
