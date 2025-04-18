@@ -31,6 +31,10 @@
 			{
 				"command": "dataflex.setCurrentProject",
 				"title": "DataFlex: Set Current Project"
+			},
+			{
+				"command": "dataflex.preCompilePackage",
+				"title": "DataFlex: Precompile Dataflex Package"
 			}
 		],
 		"languages": [

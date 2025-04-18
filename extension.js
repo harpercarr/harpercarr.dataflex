@@ -6,9 +6,11 @@ const WinReg = require('winreg');
 const createSymbolProvider = require('./dataflexSymbolProvider');
 const createDefinitionProvider = require('./dataflexDefinitionProvider');
 const { platform } = require('os');
+const { setSourceMapsEnabled } = require('process');
 
 let ui;
 
+const currentWorkspaceStatusBar = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99); // Slightly lower priority
 
 async function activate(context) {
     // Initialize UI
@@ -23,6 +25,22 @@ async function activate(context) {
     const { dataflexInstallPath, workspaceRoot, swsConfig, projects } = await setupEnvironment(context, swsFile);
     if (!workspaceRoot || !swsConfig) return; // Early exit handled in setupEnvironment
 
+    if (swsConfig){
+        // Update workspace status bar on re-initialization
+        currentWorkspaceStatusBar.text = `Workspace: ${swsFile}`;
+        currentWorkspaceStatusBar.tooltip = `${path.join(workspaceRoot, swsFile)}`;
+        
+        const currentProject = context.globalState.get('currentProject', false);
+        if (currentProject){
+            currentWorkspaceStatusBar.text += ` - Project: ${currentProject.name}`;
+            
+        } else {
+            currentWorkspaceStatusBar.text += ` - Project: None Selected`;
+        }
+
+        currentWorkspaceStatusBar.show();
+    }
+
     const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
     if (dataflexInstallPath) externalPaths.push(path.join(dataflexInstallPath, 'Pkg'));
 
@@ -30,10 +48,10 @@ async function activate(context) {
     registerLanguageProviders(context, externalPaths);
 
     // Load and display current project
-    await manageCurrentProject(context, ui.currentProjectStatusBar, projects);
+    await manageCurrentProject(context, currentWorkspaceStatusBar, projects);
 
     // Register commands
-    registerCommands(context, ui.currentProjectStatusBar, workspaceRoot, swsFile, projects);
+    registerCommands(context, currentWorkspaceStatusBar, workspaceRoot, swsFile, projects);
     
 }
 
@@ -171,8 +189,8 @@ function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) 
             if (selected) {
                 const currentProject = { name: selected.label, srcPath: selected.description };
                 context.globalState.update('currentProject', currentProject);
-                statusBar.text = `Project: ${currentProject.name}`;
-                statusBar.show();
+                currentWorkspaceStatusBar.text = `Project: ${currentProject.name}`;
+                currentWorkspaceStatusBar.show();
                 vscode.window.showInformationMessage(`Set current project to: ${currentProject.name}`);
             }
         })
@@ -186,7 +204,13 @@ function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) 
                 return;
             }
             await compileFile(path.join(workspaceRoot, swsFile), currentProject.srcPath, context);
-        })
+        }),
+        context.subscriptions.push(
+            vscode.commands.registerCommand('dataflex.preCompilePackage', async () => {
+                vscode.window.showInformationMessage('Precompiling coming soon...');
+                
+            })
+        )
     );
     } else {
         vscode.window.showErrorMessage("Unable to compile on non-windows platforms");
@@ -313,25 +337,20 @@ async function compileFile(swsPath, srcPath, context) {
     const outputChannel = vscode.window.createOutputChannel('DataFlex Compiler');
     outputChannel.show(true);
 
-    const command = `"${compilerPath}" -x"${swsPath}" "${srcPath}"`; 
+    const command = `"${compilerPath}" -x"${swsPath}" -w "${srcPath}"`; 
     outputChannel.appendLine(`Executing: ${command}`);
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     exec(command, { cwd: workspaceRoot }, async (error, stdout, stderr) => {
-        outputChannel.appendLine(stdout || 'No output from compiler.');
-        if (error) {
-            outputChannel.appendLine(`Error: ${error.message}`);
-            const baseName = path.basename(srcPath, '.src');
-            const errFile = path.join(workspaceRoot, 'AppSrc', `${baseName}.err`);
-            if (await fileExists(errFile)) {
-                const errors = await fs.readFile(errFile, 'utf8');
-                outputChannel.appendLine('Compiler Errors:\n' + errors);
-            }
-            outputChannel.appendLine(stderr || 'No additional error info.');
-            return;
+        const baseName = path.basename(srcPath, '.src');
+        const errFile = path.join(workspaceRoot, 'AppSrc', `${baseName}.err`);
+        if (await fileExists(errFile)) {
+            const errors = await fs.readFile(errFile, 'utf8');
+            outputChannel.appendLine('Compiler Errors:\n' + errors);
+            vscode.commands.executeCommand('vscode.openFile', errFile);
+        } else {
+            outputChannel.appendLine('Compilation successful.');
         }
-        outputChannel.appendLine('Compilation successful.');
-        if (stderr) outputChannel.appendLine(stderr);
     });
 }
 
