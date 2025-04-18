@@ -1,8 +1,8 @@
 # DataFlex Language Support for Visual Studio Code
 
-[![Version](https://img.shields.io/vscode-marketplace/v/{your-publisher}.{your-extension-name})](https://marketplace.visualstudio.com/items?itemName={your-publisher}.{your-extension-name})
-[![Installs](https://img.shields.io/vscode-marketplace/i/{your-publisher}.{your-extension-name})](https://marketplace.visualstudio.com/items?itemName={your-publisher}.{your-extension-name})
-[![Rating](https://img.shields.io/vscode-marketplace/r/{your-publisher}.{your-extension-name})](https://marketplace.visualstudio.com/items?itemName={your-publisher}.{your-extension-name})
+[![Version](https://img.shields.io/vscode-marketplace/v/harpercarr.dataflex)](https://marketplace.visualstudio.com/items?itemName=harpercarr.dataflex)
+[![Installs](https://img.shields.io/vscode-marketplace/i/harpercarr.dataflex)](https://marketplace.visualstudio.com/items?itemName=harpercarr.dataflex)
+[![Rating](https://img.shields.io/vscode-marketplace/r/harpercarr.dataflex)](https://marketplace.visualstudio.com/items?itemName=harpercarr.dataflex)
 This extension provides language support for DataFlex within Visual Studio Code, enhancing your development experience with features like symbol navigation, definition lookup, and compilation.
 Originally this was an extension of the Dataflex-Colorize extension by Alisson Rodrigues. https://marketplace.visualstudio.com/items?itemName=alissoncfr.vdf  His colorization is what is being used, but I did add colorization rules for some missing things... mostly webapp related.
 
