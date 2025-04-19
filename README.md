@@ -58,7 +58,7 @@ This extension contributes the following settings to VS Code (accessible via `Fi
 
 ## Release Notes
 
-### [0.1.0] - 2025-04-18
+### [0.1.1] - 2025-04-18
 
 * Initial public release
 
