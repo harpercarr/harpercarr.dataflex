@@ -41,11 +41,11 @@ async function activate(context) {
         currentWorkspaceStatusBar.show();
     }
 
-    const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
-    if (dataflexInstallPath) externalPaths.push(path.join(dataflexInstallPath, 'Pkg'));
+    const definitionPaths = await getDefinitionPaths(workspaceRoot, swsConfig);
+    if (dataflexInstallPath) definitionPaths.push(path.join(dataflexInstallPath, 'Pkg'));
 
     // Register providers
-    registerLanguageProviders(context, externalPaths);
+    registerLanguageProviders(context, definitionPaths);
 
     // Load and display current project
     await manageCurrentProject(context, currentWorkspaceStatusBar, projects);
@@ -82,6 +82,7 @@ async function setupEnvironment(context, swsFile) {
         srcPath: path.join(workspaceRoot, 'AppSrc', srcFile)
     }));
 
+    
     const dataflexInstallPath = await getOrSetDataFlexInstallPath(context, swsConfig.properties.version, hasRunBefore);
     
     return { dataflexInstallPath, workspaceRoot,  swsConfig, projects };
@@ -197,21 +198,33 @@ function registerCommands(context, statusBar, workspaceRoot, swsFile, projects) 
     );
     if (process.platform === 'win32') {
         context.subscriptions.push(
-        vscode.commands.registerCommand('dataflex.compile', async () => {
-            const currentProject = context.globalState.get('currentProject');
-            if (!currentProject) {
-                vscode.window.showErrorMessage('No current project set. Please select a DataFlex project first.');
-                return;
-            }
-            await compileFile(path.join(workspaceRoot, swsFile), currentProject.srcPath, context);
-        }),
-        context.subscriptions.push(
-            vscode.commands.registerCommand('dataflex.preCompilePackage', async () => {
-                vscode.window.showInformationMessage('Precompiling coming soon...');
-                
-            })
-        )
-    );
+            vscode.commands.registerCommand('dataflex.compile', async () => {
+                const currentProject = context.globalState.get('currentProject');
+                if (!currentProject) {
+                    vscode.window.showErrorMessage('No current project set. Please select a DataFlex project first.');
+                    return;
+                }
+                await compileFile(path.join(workspaceRoot, swsFile), currentProject.srcPath, context);
+            }),
+            context.subscriptions.push(
+                vscode.commands.registerCommand('dataflex.preCompilePackage', async () => {
+                    const preCompPkg = await vscode.window.showOpenDialog({
+                        canSelectFolders: false,
+                        canSelectFiles: true,
+                        openLabel: 'Select DataFlex Package File (.pkg)',
+                        defaultUri: vscode.Uri.file(path.join(workspaceRoot, 'AppSrc')),
+                        filters: {
+                            'DataFlex Package': ['pkg'],
+                            'All Files': ['*']
+                        }
+                    });
+        
+                    if (preCompPkg) {
+                        await compileFile(path.join(workspaceRoot, swsFile), preCompPkg[0].fsPath, context, true);
+                    }
+                })
+            )
+        );
     } else {
         vscode.window.showErrorMessage("Unable to compile on non-windows platforms");
     }
@@ -235,7 +248,7 @@ async function reinitializeEnvironment(context, swsFilePath) {
     // Re-evaluate the DataFlex install path based on the new .sws file's version
     const dataflexInstallPath = await getOrSetDataFlexInstallPath(context, swsConfig.properties.version, context.globalState.get('hasRunBefore', false));
 
-    const externalPaths = await getExternalPaths(workspaceRoot, swsConfig);
+    const externalPaths = await getDefinitionPaths(workspaceRoot, swsConfig);
     if (dataflexInstallPath) externalPaths.push(path.join(dataflexInstallPath, 'Pkg'));
 
     // Re-register language providers with the new paths
@@ -326,7 +339,13 @@ async function promptForInstallPath(context) {
     return null;
 }
 
-async function compileFile(swsPath, srcPath, context) {
+async function compileWebapp(swsPath, srcPath, context){
+    // TODO: If we are compiling a webapp then:
+    // Find the correct webapp in the registry and stop it
+    // 
+}
+
+async function compileFile(swsPath, srcPath, context, precompile = false) {
     const { exec } = require('child_process');
     const compilerPath = path.join(context.globalState.get('dataflexInstallPath') || '', 'Bin', 'DFComp.exe');
     if (!(await fileExists(compilerPath))) {
@@ -337,7 +356,7 @@ async function compileFile(swsPath, srcPath, context) {
     const outputChannel = vscode.window.createOutputChannel('DataFlex Compiler');
     outputChannel.show(true);
 
-    const command = `"${compilerPath}" -x"${swsPath}" -w "${srcPath}"`; 
+    const command = `"${compilerPath}" -x"${swsPath}" -w "${srcPath}" ${precompile ? ' -p' : ''}`; 
     outputChannel.appendLine(`Executing: ${command}`);
 
     const workspaceRoot = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
@@ -422,11 +441,11 @@ async function readSwsFile(swsFilePath) {
     }
 }
 
-async function getExternalPaths(workspaceRoot, swsConfig) {
-    const externalPaths = [];
+async function getDefinitionPaths(workspaceRoot, swsConfig) {
+    const definitionPaths = [];
     if (!workspaceRoot || !swsConfig) {
         console.log('No workspace or swsConfig; skipping .sws processing');
-        return externalPaths;
+        return definitionPaths;
     }
 
     const wsPaths = swsConfig['workspacepaths'] || {};
@@ -443,7 +462,7 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
                 .map(p => path.resolve(workspaceRoot, p));
             for (const p of paths) {
                 if (await fileExists(p)) {
-                    externalPaths.push(p);
+                    definitionPaths.push(p);
                 }
             }
         } catch (err) {
@@ -462,14 +481,14 @@ async function getExternalPaths(workspaceRoot, swsConfig) {
         if (path.resolve(path.dirname(lib)) != workspaceRoot) {
             const libraryPaths = await processLibrary(lib);
             // Append all items from libraryPaths to externalPaths
-            externalPaths.push(...libraryPaths);
+            definitionPaths.push(...libraryPaths);
         }
     }
 
     const configPaths = vscode.workspace.getConfiguration('dataflex').get('externalLibraryPaths', []);
-    if (configPaths.length && configPaths[0] !== '') externalPaths.push(...configPaths);
+    if (configPaths.length && configPaths[0] !== '') definitionPaths.push(...configPaths);
 
-    return [...new Set(externalPaths)];
+    return [...new Set(definitionPaths)];
 }
 
 async function processLibrary(lib){
